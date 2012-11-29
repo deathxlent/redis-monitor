@@ -21,9 +21,8 @@ import com.netflix.curator.framework.CuratorFrameworkFactory;
 import com.netflix.curator.retry.ExponentialBackoffRetry;
 
 /**
- * zk+redis cluster，fat jar打包
- * java -jar redis-monitor_fat.jar localhost:2181 /redis/group1 127.0.0.1:6379
- * D:\ws\redis-monitor\log4j1.properties
+ * zk+redis cluster，fat jar打包 java -jar redis-monitor_fat.jar localhost:2181
+ * /redis/group1 127.0.0.1:6379 D:\ws\redis-monitor\log4j1.properties
  *
  * @author guangyi.kou
  */
