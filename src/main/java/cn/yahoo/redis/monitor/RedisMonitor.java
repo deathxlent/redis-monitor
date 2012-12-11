@@ -29,7 +29,7 @@ import com.netflix.curator.retry.ExponentialBackoffRetry;
 public class RedisMonitor {
 	private static Logger log = LoggerFactory.getLogger(RedisMonitor.class);
 	private static String zookeeperConnectionString = "";// zk链接
-	private static String path = "";// 路径
+	private static String path = "";// 路径 /redis/{groupX}
 	private static String redis = "";// redis实例
 	private static String m_redis = null;// 上级M
 	private static RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000,
@@ -61,6 +61,7 @@ public class RedisMonitor {
 	};
 
 	public static void main(String[] args) {
+		//参数请自己保证正确
 		if (args == null || args.length != 4) {
 			log.error("参数有误！");
 			System.exit(0);
