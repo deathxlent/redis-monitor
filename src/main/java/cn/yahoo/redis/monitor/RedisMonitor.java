@@ -1,15 +1,9 @@
 package cn.yahoo.redis.monitor;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Timer;
-import java.util.TimerTask;
 
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,86 +15,53 @@ import com.netflix.curator.framework.CuratorFrameworkFactory;
 import com.netflix.curator.retry.ExponentialBackoffRetry;
 
 /**
- * zk+redis cluster£¬fat jar´ò°ü java -jar redis-monitor_fat.jar localhost:2181
- * /redis/group1 127.0.0.1:6379 D:\ws\redis-monitor\log4j1.properties
+ * ä»»åŠ¡å°±æ˜¯æ³¨å†Œä¸´æ—¶èŠ‚ç‚¹åˆ°zkï¼Œç„¶åæ¯5s pingä¸€ä¸‹redisï¼Œçœ‹çœ‹æ˜¯å¦å­˜æ´» zk+redis clusterï¼Œfat jaræ‰“åŒ… java -jar
+ * redis-monitor_fat.jar localhost:2181 /redis/group1 127.0.0.1:6379
+ * D:\ws\redis-monitor\log4j1.properties
  *
  * @author guangyi.kou
  */
 public class RedisMonitor {
 	private static Logger log = LoggerFactory.getLogger(RedisMonitor.class);
-	private static String zookeeperConnectionString = "";// zkÁ´½Ó
-	private static String path = "";// Â·¾¶ /redis/{groupX}
-	private static String redis = "";// redisÊµÀı
-	private static String m_redis = null;// ÉÏ¼¶M
+	private static String zookeeperConnectionString = "";// zké“¾æ¥
+	private static String path = "";// è·¯å¾„ /redis/{groupX}
+	private static String redis = "";// rediså®ä¾‹
 	private static RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000,
 			3);
-	private static List<String> redisc = new ArrayList<String>();
 	private static CuratorFramework client = null;
-	private static Watcher watcher = new Watcher() {
-		// watcher
-		public void process(WatchedEvent event) {
-			System.out.println("event:" + event.getType() + " path:"
-					+ event.getPath());
-			if (m_redis != null) {// Ô­À´¾ÍÊÇMµÄ»°¾Í²»ÓÃ¹ÜÁË£¬Ö±½ÓÌøµ½ÏÂÃæÖØĞÂwatch¾ÍĞĞ£¬Èç¹ûÔ­À´²»ÊÇMµÄ»°£¬¾ÍÒª×ßÏÂÃæ·ÖÖ§ÅĞ¶ÏÁË
-				// ÏÈµÃµ½µ±Ç°Â·¾¶µÄ×´¿ö
-				zkDatas();
-				int zkindex = redisc.indexOf(redis);
-				if (zkindex == 0) {// M
-					// -4.1 ·¢ÏÖ¸Ä±ä£¬²¢ÇÒ×Ô¼ºÊÇµÚÒ»¸öµÄ»°£¬¸ÄÎªMÄ£Ê½
-					setRedisM();
-				} else {// S
-					String tempM = redisc.get(zkindex - 1);// ÉÏÒ»¼¶
-					if (!tempM.equals(redis)) {// -4.2·¢ÏÖÉÏÒ»¼¶¸Ä±ä£¬¸Äslave
-						setRedisS();
-					}
-				}
-			}
-			// ¼ÌĞø¹Û²ì
-			addWatcher();
-		}
-	};
 
 	public static void main(String[] args) {
-		//²ÎÊıÇë×Ô¼º±£Ö¤ÕıÈ·
+		// å‚æ•°è¯·è‡ªå·±ä¿è¯æ­£ç¡®
 		if (args == null || args.length != 4) {
-			log.error("²ÎÊıÓĞÎó£¡");
+			log.error("å‚æ•°æœ‰è¯¯ï¼");
 			System.exit(0);
 		}
 		zookeeperConnectionString = args[0];
 		path = args[1];
 		redis = args[2];
 		PropertyConfigurator.configure(args[3]);
-		// 1.´´½¨½Úµã¡Ì
-		log.info("¿ªÊ¼´´½¨½Úµã...");
+		// 1.åˆ›å»ºèŠ‚ç‚¹âˆš
+		log.info("å¼€å§‹åˆ›å»ºèŠ‚ç‚¹...");
 		client = init();
 		if (client == null) {
-			log.error("zkÁ¬½Ó´´½¨ÓĞÎó£¡");
+			log.error("zkè¿æ¥åˆ›å»ºæœ‰è¯¯ï¼");
 			System.exit(0);
 		}
-		log.info("´´½¨½ÚµãÍê±Ï,¿ªÊ¼»ñÈ¡µ±Ç°×´Ì¬...");
-		// 2.µÃµ½µ±Ç°Â·¾¶µÄ×´¿ö¡Ì
-		zkDatas();
-		log.info("È¡µ±Ç°×´Ì¬Íê±Ï,¿ªÊ¼ÉèÖÃ×ÔÉíredis...");
-		// 3.ÉèÖÃ×ÔÉíredis
-		setRedisStatus();
-		log.info("ÉèÖÃ×ÔÉíredisÍê±Ï,¿ªÊ¼¼à¿Øzk...");
-		// 4.watch zk
-		addWatcher();
-		log.info("watcherÉèÖÃÍê±Ï,¿ªÊ¼²»¼ä¶Ïping...");
+		log.info("åˆ›å»ºèŠ‚ç‚¹å®Œæ¯•,å¼€å§‹è·å–å½“å‰çŠ¶æ€...");
 		try {
-			// 5.Ã¿¸ô5s pingÒ»ÏÂ£¬Ã»ÓĞ¾Íexit
+			// 5.æ¯éš”5s pingä¸€ä¸‹ï¼Œæ²¡æœ‰å°±exit
 			Jedis jedis = new Jedis(getHost(redis), getPort(redis));
 			Timer timer = new Timer();
 			Task t = new Task(jedis, log, redis);
 			timer.schedule(t, 0);
-			// TODO 6.Ã¿¸ô1m infoÒ»ÏÂ£¬²é¿´ÓÃÁ¿£¬ÓÃÁ¿µ½Ò»¶¨³Ì¶È£¬±¨¾¯
+			// TODO 6.æ¯éš”1m infoä¸€ä¸‹ï¼ŒæŸ¥çœ‹ç”¨é‡ï¼Œç”¨é‡åˆ°ä¸€å®šç¨‹åº¦ï¼ŒæŠ¥è­¦
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
 
 	/**
-	 * 1.´´½¨½Úµã
+	 * 1.åˆ›å»ºèŠ‚ç‚¹
 	 *
 	 * @return
 	 */
@@ -120,86 +81,7 @@ public class RedisMonitor {
 	}
 
 	/**
-	 * 2.µÃµ½µ±Ç°Â·¾¶µÄ×´¿ö¡Ì
-	 */
-	private static void zkDatas() {
-		try {
-			List<String> it = client.getChildren().forPath(path);
-			Collections.sort(it);
-			for (String s : it) {
-				redisc.add(new String(client.getData().forPath(path + "/" + s)));
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			System.exit(0);
-		}
-	}
-
-	/**
-	 * 3.ÉèÖÃ×ÔÉíredis
-	 */
-	private static void setRedisStatus() {
-		// -3.1 ×Ô¼ºÊÇµÚÒ»¸ö¾ÍÊÇMÄ£Ê½
-		int zkindex = redisc.indexOf(redis);
-		if (zkindex == 0) {
-			// ÉèÖÃM
-			setRedisM();
-		} else {// -3.2 ²»ÊÇµÄ»°£¬¼ÇÂ¼ÉÏÒ»¼¶£¬Éè×Ô¼ºÎªS
-			m_redis = redisc.get(zkindex - 1);// ¼ÇÂ¼ÉÏÒ»¼¶
-			// ÉèÖÃS
-			setRedisS();
-		}
-	}
-
-	/**
-	 * ÉèÖÃM
-	 */
-	private static void setRedisM() {
-		try {
-			Jedis jedis = new Jedis(getHost(redis), getPort(redis));
-			jedis.slaveofNoOne();
-			jedis.configSet("appendonly", "no");
-			jedis.configSet("save", "");
-			jedis.disconnect();
-			log.info("redis·şÎñÆ÷ " + redis + "ÉèÎªÖ÷");
-		} catch (Exception e) {
-			log.error("redis·şÎñÆ÷ " + redis + " Ê§È¥Á¬½Ó");
-			System.exit(1);
-		}
-	}
-
-	/**
-	 * ÉèÖÃS
-	 */
-	private static void setRedisS() {
-		try {
-			Jedis jedis = new Jedis(getHost(redis), getPort(redis));
-			jedis.slaveof(getHost(m_redis), getPort(m_redis));
-			jedis.configSet("appendonly", "yes");
-			// TODO ĞèÒªÊµ¼ÊËãÒ»ÏÂ¹æÔò
-			jedis.configSet("appendfsync", "everysec");
-			jedis.configSet("save", "900 1 300 10 60 10000");
-			jedis.disconnect();
-			log.info("redis·şÎñÆ÷ " + redis + "ÉèÎª" + m_redis + "µÄ´Ó");
-		} catch (Exception e) {
-			log.error("redis·şÎñÆ÷ " + redis + " Ê§È¥Á¬½Ó");
-			System.exit(1);
-		}
-	}
-
-	/**
-	 * Ìí¼Ówatcher
-	 */
-	private static void addWatcher() {
-		try {
-			client.getChildren().usingWatcher(watcher).forPath(path);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-
-	/**
-	 * µÃµ½ip:host×Ö¶ÎµÄip
+	 * å¾—åˆ°ip:hostå­—æ®µçš„ip
 	 *
 	 * @param redisString
 	 * @return
@@ -209,41 +91,12 @@ public class RedisMonitor {
 	}
 
 	/**
-	 * µÃµ½ip:host×Ö¶ÎµÄport
+	 * å¾—åˆ°ip:hostå­—æ®µçš„port
 	 *
 	 * @param redisString
 	 * @return
 	 */
 	private static Integer getPort(String redisString) {
 		return Integer.valueOf(redisString.split(":")[1]);
-	}
-}
-
-class Task extends TimerTask {
-	private Jedis jedis;
-	private Logger log;
-	private String redis;
-
-	Task(Jedis jedis, Logger log, String redis) {
-		this.jedis = jedis;
-		this.log = log;
-		this.redis = redis;
-	}
-
-	public void run() {
-		log.info("ping " + redis + "...");
-		try {
-			if (!jedis.ping().equalsIgnoreCase("pong")) {
-				log.error("redis·şÎñÆ÷ " + redis + " Ê§È¥Á¬½Ó");
-				System.exit(1);
-			}
-		} catch (Exception e) {
-			log.error("redis·şÎñÆ÷ " + redis + " Ê§È¥Á¬½Ó");
-			System.exit(1);
-		}
-		log.info("pong");
-		Timer timer = new Timer();
-		Task t = new Task(jedis, log, redis);
-		timer.schedule(t, 5 * 1000);
 	}
 }
